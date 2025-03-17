@@ -8,7 +8,7 @@ CIS 457 02
 ![Placeholder image](img/placeholder.png)
 
 The second project for CIS457: Data Communications.
-DNR is a simple UPD-based iterative DNS client written in Python3. Unlike the first project [NUSA](https://github.com/ElijahLeeMorgan/CIS457-NUSA) this application will interact on WAN with other DNS servers. However, it will not take DNS requests, only send them.
+DNR is a simple UDP-based iterative DNS client written in Python3. Unlike the first project [NUSA](https://github.com/ElijahLeeMorgan/CIS457-NUSA) this application will interact on WAN with other DNS servers. However, it will not take DNS requests, only send them.
 
 [Outline of project requirements and expectations.](https://dulimarta-teaching.netlify.app/cs457/p2-iterative-dns.html)
 
