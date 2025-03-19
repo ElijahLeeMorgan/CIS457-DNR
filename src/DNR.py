@@ -18,6 +18,48 @@ BREAKLINE = f"\n{'=' * LINELEN}\n"
 WEAKLINE = f"\n\n{'-' * LINELEN}\n"
 LONGSPACE = "\n" * 3
 
+class cache:
+  #TODO If I implement IPv6 for extra credit, make a child class for IPv6
+  def __init__(self):
+    # Key: domain, Value: IP address
+    self.cache = {}
+    self.length = 0
+  
+  def _inCache(self, key:str) -> bool:
+    return key in self.cache
+  
+  def add(self, key:str, value:str) -> None:
+    # This will overwrite existing values!
+    self.cache[key] = value
+    self.length += 1
+
+  def remove(self, key) -> None:
+    if self._inCache(key):
+      del self.cache[key]
+      self.length -= 1
+    else:
+      print(f"Domain \"{key}\" not found in cache")
+
+  def list(self) -> tuple[tuple[str], tuple[str]]:
+    return tuple(self.cache.keys()), tuple(self.cache.values())
+  
+  def clear(self) -> None:
+    self.cache.clear()
+    self.length = 0
+
+  def get(self, key:str) -> str|None:
+    if self._inCache(key):
+      return self.cache[key]
+    else:
+      print(f"Domain \"{key}\" not found in cache")
+      return None
+
+def domainValidation(domain:str) -> bool:
+  # "validation" in words only, mostly to stop mispelled commands from crashing the program.
+  if domain.startswith(".") and domain != ".":
+    return False
+  return True
+
 def clearScreen() -> None:
   system('cls' if name == 'nt' else 'clear')
 
@@ -92,13 +134,53 @@ if __name__ == '__main__':
   # Total mess of code, compounded by Ai assistence. Will clean up in commit soon.
   # Create a UDP socket
   sock = socket(AF_INET, SOCK_DGRAM)
+  cache = cache()
   clearScreen()
   
   while True:
-    targetDomain = input("Enter a domain name (or type '.exit' to quit): ")
+    targetDomain = input("Enter a domain name (or type '.help' for commands): ")
     clearScreen()
-    if targetDomain == ".exit":
-      break
+    
+    # Command handling
+    match targetDomain:
+      case ".exit":
+        break
+      case ".list":
+        domains, ips = cache.list()
+
+        if cache.length == 0:
+          print("Cache is empty")
+          continue
+
+        for domain, ip in zip(domains, ips):
+          print(f"Domain: {domain}\tIP: {ip}")
+        continue
+      case ".clear":
+        cache.clear()
+        print("Cache cleared")
+        continue
+      case ".remove":
+        _ = input("Enter the domain to remove: ")
+        if _ in cache.cache:
+          cache.remove(_)
+          print(f"Domain \"{_}\" removed")
+        else:
+          print(f"Domain \"{_}\" not found")
+        continue
+      case ".help":
+        print(f"{BREAKLINE}Commands:\n.exit: Exit the program\n.list: List the cache\n.clear: Clear the cache\n.remove: Remove a domain from the cache\n.help: Display this message{BREAKLINE}")
+        continue
+      case ".get":
+        _ = input("Enter the domain to get: ")
+        if _ in cache.cache:
+          print(f"Domain \"{_}\" found at {cache.get(_)}")
+        else:
+          print(f"Domain \"{_}\" not found")
+        continue
+      case _:
+        if not domainValidation(targetDomain): 
+          print("Invalid domain or command: Try '.help' for more information.")
+          continue
 
     # Split the domain substrings
     domainParts = domainSplit(targetDomain)
