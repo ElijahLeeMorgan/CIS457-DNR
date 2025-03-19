@@ -16,9 +16,9 @@ DNS_PORT = 53
 LINELEN = 150
 BREAKLINE = f"\n{'=' * LINELEN}\n"
 WEAKLINE = f"\n\n{'-' * LINELEN}\n"
-LONGSPACE = "\n" * 3
+LONGSPACE = "\n" * 2
 
-class cache:
+class Cache:
   #TODO If I implement IPv6 for extra credit, make a child class for IPv6
   def __init__(self):
     # Key: domain, Value: IP address
@@ -66,7 +66,7 @@ def clearScreen() -> None:
 def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> list[RR]:
   q = DNSRecord.question(domain, qtype = record_type)
   q.header.rd = 0   # Recursion Desired?  NO
-  #print(BREAKLINE, "DNS query", repr(q))
+  print(LONGSPACE, "DNS query", repr(q))
   udp_socket.sendto(q.pack(), (parent_server, DNS_PORT))
   pkt, _ = udp_socket.recvfrom(8192)
   buff = DNSBuffer(pkt)
@@ -75,7 +75,7 @@ def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> l
   # NS queries typically return information in the authority section.
   answers = []
   authorities = []
-  #additional = []
+  additional = []
 
   """
   RFC1035 Section 4.1 Format
@@ -91,41 +91,30 @@ def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> l
   A/AAAA queries typically return information in the answer section.
   """
   
-  # Parse header section #1
+  # ==================== 1. Parse header =============================
   header = DNSHeader.parse(buff)
+  
   #print("DNS header", repr(header), WEAKLINE)
   if q.header.id != header.id:
     print("Unmatched transaction")
-    return
+    return None, None, None
   if header.rcode != RCODE.NOERROR:
     print("Query failed")
-    return None
+    return None, None, None
 
-  # Parse the question section #2
-  for k in range(header.q):
-    q = DNSQuestion.parse(buff)
-    print(f"Question-{k} {repr(q)}\t\tParent-Server: {parent_server}{WEAKLINE}")
-
-  # Parse the answer section #3
-  for k in range(header.a):
-    a = RR.parse(buff)
-    #print(f"Answer-{k} {repr(a)}")
-    answers.append(a)
-    #if a.rtype == QTYPE.A:
-      #print("IP address")
-      
-  # Parse the authority section #4
-  for k in range(header.auth):
-    auth = RR.parse(buff)
-    #print(f"Authority-{k} {repr(auth)}")
-    authorities.append(auth)
-      
-  # Parse the additional section #5
-  for k in range(header.ar):
-    adr = RR.parse(buff)
+  # ==================== 2. Parse questions =========================
+  # Despite beign unused, if I don't parse the questions there will be bufferOverflow.
+  questions = [DNSQuestion.parse(buff) for _ in range(header.q)]
+  del questions
+  # ==================== 3. Parse answers ===========================
+  answers = [RR.parse(buff) for _ in range(header.a)]   
+  # ==================== 4. Parse authority =========================
+  authorities = [RR.parse(buff) for _ in range(header.auth)]    
+  # ==================== 5. Parse additionals =======================
+  additional = [RR.parse(buff) for _ in range(header.ar)]
 
   #NOTE Unpacking doesn't work with None
-  return answers, authorities
+  return answers, authorities, additional
 
 def domainSplit(domain: str) -> list[str]: # IDK why i built this, I think it's neater.
   return domain.split(".")
@@ -134,7 +123,7 @@ if __name__ == '__main__':
   # Total mess of code, compounded by Ai assistence. Will clean up in commit soon.
   # Create a UDP socket
   sock = socket(AF_INET, SOCK_DGRAM)
-  cache = cache()
+  cache = Cache()
   clearScreen()
   
   while True:
@@ -178,6 +167,7 @@ if __name__ == '__main__':
           print(f"Domain \"{_}\" not found")
         continue
       case _:
+        # Checking for missplelled commands
         if not domainValidation(targetDomain): 
           print("Invalid domain or command: Try '.help' for more information.")
           continue
@@ -195,7 +185,9 @@ if __name__ == '__main__':
       if result is None:
         print(f"Failed to get record for \"{subdomain}\"")
         continue
-      answers, authorities = result
+      answers, authorities, additional = result
+
+      #TODO Handle None, None, None case
 
       for answer in answers:
         if answer.rtype == QTYPE.A or answer.rtype == QTYPE.AAAA:
@@ -212,5 +204,6 @@ if __name__ == '__main__':
         else:
           print(f"Unhandled record type: {authority.rtype}")
           break
-    print(BREAKLINE)
+    print(LONGSPACE)
+    #cache.add(targetDomain, currentServer)
   sock.close()
