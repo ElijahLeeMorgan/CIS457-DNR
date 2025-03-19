@@ -5,7 +5,7 @@ CIS 457 02
 
 # Domain Name Resolver
 
-![Placeholder image](img/placeholder.png)
+![Ethernet Switch](img/switch.jpg)
 
 The second project for CIS457: Data Communications.
 DNR is a simple UDP-based iterative DNS client written in Python3. Unlike the first project [NUSA](https://github.com/ElijahLeeMorgan/CIS457-NUSA) this application will interact on WAN with other DNS servers. However, it will not take DNS requests, only send them.
