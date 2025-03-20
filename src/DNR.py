@@ -8,8 +8,21 @@ CIS 457 02
 """
 
 # There are 13 root servers defined at https://www.iana.org/domains/root/servers
-
-ROOT_SERVER = "199.7.83.42"    # ICANN Root Server
+IPv4_ROOT_SERVERS = [
+    "198.41.0.4",      # a.root-servers.net
+    "199.9.14.201",    # b.root-servers.net
+    "192.33.4.12",     # c.root-servers.net
+    "199.7.91.13",     # d.root-servers.net
+    "192.203.230.10",  # e.root-servers.net
+    "192.5.5.241",     # f.root-servers.net
+    "192.112.36.4",    # g.root-servers.net
+    "198.97.190.53",   # h.root-servers.net
+    "192.36.148.17",   # i.root-servers.net
+    "192.58.128.30",   # j.root-servers.net
+    "193.0.14.129",    # k.root-servers.net
+    "199.7.83.42",     # l.root-servers.net
+    "202.12.27.33"     # m.root-servers.net
+]
 DNS_PORT = 53
 
 # Formatting constants
@@ -76,20 +89,6 @@ def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> l
   answers = []
   authorities = []
   additional = []
-
-  """
-  RFC1035 Section 4.1 Format
-  
-  The top level format of DNS message is divided into five sections:
-  1. Header
-  2. Question
-  3. Answer
-  4. Authority
-  5. Additional
-  
-  NS queries typically return information in the authority section.
-  A/AAAA queries typically return information in the answer section.
-  """
   
   # ==================== 1. Parse header =============================
   header = DNSHeader.parse(buff)
@@ -116,16 +115,40 @@ def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> l
   #NOTE Unpacking doesn't work with None
   return answers, authorities, additional
 
-def domainSplit(domain: str) -> list[str]: # IDK why i built this, I think it's neater.
-  return domain.split(".")
-
-if __name__ == '__main__':
-  # Total mess of code, compounded by Ai assistence. Will clean up in commit soon.
-  # Create a UDP socket
-  sock = socket(AF_INET, SOCK_DGRAM)
-  cache = Cache()
-  clearScreen()
+def parseAnswer(sock:socket, cache:Cache, answers: RR) -> str:
+  # Check for answers
+  for answer in answers:
+    if (answer.rtype == QTYPE.A): # or (answer.rtype == QTYPE.AAAA): #TODO IpV6 for extra credit
+      ip = str(answer.rdata)
+      print(f"Domain resolved to: {ip}")
+      return ip
+    elif answer.rtype == QTYPE.CNAME:
+      alias = str(answer.rdata)
+      print(f"Alias: {alias}")
+      return query(sock, cache, alias, IPv4_ROOT_SERVERS)
+    else:
+      print(f"Unhandled record type: {answer.rtype}")
   
+def parseNameServers(sock:socket, cache:Cache, authorities: RR, additionals:RR, targetDomain:str) -> list[str]:
+  # Check for server aliases
+    if authorities is None:
+      print(f"No authority for \"{targetDomain}\" at \"{parent}\"")
+    else:
+      # Parse the name servers
+      nameServers = [str(auth.rdata) for auth in authorities if auth.rtype == QTYPE.NS]
+      additional_map = {str(add.rname): str(add.rdata) for add in additionals if add.rtype == QTYPE.A}
+
+      for ns in nameServers:
+        if ns in additional_map:
+          print(f"Name Server: {ns} at {additional_map[ns]}")
+          ip = query(sock, cache, targetDomain, [additional_map[ns]])
+          if ip:
+            return ip
+        else:
+          print(f"Name Server: {ns} (No IP found)")
+
+# Runs query() based on user input
+def inputLoop(sock:socket, cache:Cache):
   while True:
     targetDomain = input("Enter a domain name (or type '.help' for commands): ")
     clearScreen()
@@ -143,11 +166,9 @@ if __name__ == '__main__':
 
         for domain, ip in zip(domains, ips):
           print(f"Domain: {domain}\tIP: {ip}")
-        continue
       case ".clear":
         cache.clear()
         print("Cache cleared")
-        continue
       case ".remove":
         _ = input("Enter the domain to remove: ")
         if _ in cache.cache:
@@ -155,55 +176,54 @@ if __name__ == '__main__':
           print(f"Domain \"{_}\" removed")
         else:
           print(f"Domain \"{_}\" not found")
-        continue
       case ".help":
         print(f"{BREAKLINE}Commands:\n.exit: Exit the program\n.list: List the cache\n.clear: Clear the cache\n.remove: Remove a domain from the cache\n.help: Display this message{BREAKLINE}")
-        continue
       case ".get":
         _ = input("Enter the domain to get: ")
         if _ in cache.cache:
           print(f"Domain \"{_}\" found at {cache.get(_)}")
         else:
           print(f"Domain \"{_}\" not found")
-        continue
       case _:
         # Checking for missplelled commands
         if not domainValidation(targetDomain): 
           print("Invalid domain or command: Try '.help' for more information.")
-          continue
-
-    # Split the domain substrings
-    domainParts = domainSplit(targetDomain)
-    domainLength = len(domainParts)
-    currentServer = ROOT_SERVER
-
-    for i in range(domainLength - 1, -1, -1):
-      subdomain = ".".join(domainParts[i:]) # queries for the subdomain in reverse order
-      
-      #FIXME Request IPv4 for now, look into Ipv6 later. Maybe there's a way to ask before querying?
-      result = get_dns_record(sock, subdomain, currentServer, "A")
-      if result is None:
-        print(f"Failed to get record for \"{subdomain}\"")
-        continue
-      answers, authorities, additional = result
-
-      #TODO Handle None, None, None case
-
-      for answer in answers:
-        if answer.rtype == QTYPE.A or answer.rtype == QTYPE.AAAA:
-          currentServer = str(answer.rdata)
-          print(f"Address: {currentServer}")
         else:
-          print(f"Unhandled record type: {answer.rtype}")
-          break
+          ip = query(sock=sock, cache=cache, targetDomain=targetDomain) # Root servers are fine
 
-      for authority in authorities:
-        if authority.rtype == QTYPE.NS:
-          currentServer = str(authority.rdata)
-          #print(f"Name Server: {authority.rdata}")
-        else:
-          print(f"Unhandled record type: {authority.rtype}")
-          break
-    print(LONGSPACE)
-    #cache.add(targetDomain, currentServer)
-  sock.close()
+def query(sock:socket, cache:Cache, targetDomain:str, parentServers:list[str] = IPv4_ROOT_SERVERS) -> str:  
+  # Check cache
+  if targetDomain in cache.cache:
+    print(f"Domain \"{targetDomain}\" resolved in cache: {cache.get(targetDomain)}")
+    return cache.get(targetDomain)
+
+  for parent in parentServers:
+    answers, authorities, additionals = get_dns_record(sock, targetDomain, parent, "A")
+
+    if (answers is None) or (len(answers) <= 0):
+      print(f"No answer for \"{targetDomain}\" at \"{parent}\"")
+    else:
+      # There should be some kind of answer
+      ans = parseAnswer(sock, cache, answers)
+      cache.add(targetDomain, ans)
+      return ans
+
+    parseNameServers(sock, cache, authorities, additionals, targetDomain)
+
+  print(f"Failure to resolve: \"{targetDomain}\"\nPlease check your network connection.")  
+
+  print(LONGSPACE)
+  
+
+def main():
+  c = Cache()
+  # Create a UDP socket
+  s = socket(AF_INET, SOCK_DGRAM)
+  # Get the domain name / command from the user
+  inputLoop(s, c)
+
+  # Close the socket, no reason to use multiple sockets.
+  s.close()
+
+if __name__ == '__main__':
+  main()
