@@ -8,7 +8,7 @@ CIS 457 02
 """
 
 # There are 13 root servers defined at https://www.iana.org/domains/root/servers
-IPv4_ROOT_SERVERS = [
+IPv4_ROOT_SERVERS = (
     "198.41.0.4",      # a.root-servers.net
     "199.9.14.201",    # b.root-servers.net
     "192.33.4.12",     # c.root-servers.net
@@ -22,7 +22,7 @@ IPv4_ROOT_SERVERS = [
     "193.0.14.129",    # k.root-servers.net
     "199.7.83.42",     # l.root-servers.net
     "202.12.27.33"     # m.root-servers.net
-]
+)
 DNS_PORT = 53
 
 # Formatting constants
@@ -79,7 +79,7 @@ def clearScreen() -> None:
 def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> list[RR]:
   q = DNSRecord.question(domain, qtype = record_type)
   q.header.rd = 0   # Recursion Desired?  NO
-  print(LONGSPACE, "DNS query", repr(q))
+  #print(LONGSPACE, "DNS query", repr(q))
   udp_socket.sendto(q.pack(), (parent_server, DNS_PORT))
   pkt, _ = udp_socket.recvfrom(8192)
   buff = DNSBuffer(pkt)
@@ -112,7 +112,6 @@ def get_dns_record(udp_socket, domain:str, parent_server: str, record_type) -> l
   # ==================== 5. Parse additionals =======================
   additional = [RR.parse(buff) for _ in range(header.ar)]
 
-  #NOTE Unpacking doesn't work with None
   return answers, authorities, additional
 
 def parseAnswer(sock:socket, cache:Cache, answers: RR) -> str:
@@ -129,23 +128,25 @@ def parseAnswer(sock:socket, cache:Cache, answers: RR) -> str:
     else:
       print(f"Unhandled record type: {answer.rtype}")
   
-def parseNameServers(sock:socket, cache:Cache, authorities: RR, additionals:RR, targetDomain:str) -> list[str]:
+def parseNameServers(sock:socket, cache:Cache, authorities: RR, additionals:RR, targetDomain:str) -> str:
   # Check for server aliases
-    if authorities is None:
-      print(f"No authority for \"{targetDomain}\" at \"{parent}\"")
-    else:
-      # Parse the name servers
-      nameServers = [str(auth.rdata) for auth in authorities if auth.rtype == QTYPE.NS]
-      additional_map = {str(add.rname): str(add.rdata) for add in additionals if add.rtype == QTYPE.A}
+  visited = set()
 
-      for ns in nameServers:
-        if ns in additional_map:
-          print(f"Name Server: {ns} at {additional_map[ns]}")
-          ip = query(sock, cache, targetDomain, [additional_map[ns]])
-          if ip:
-            return ip
-        else:
-          print(f"Name Server: {ns} (No IP found)")
+  if authorities is None:
+    print(f"No authority for \"{targetDomain}\"")
+  else:
+    # Parse the name servers
+    nameServers = [str(auth.rdata) for auth in authorities if auth.rtype == QTYPE.NS]
+    additional_map = {str(add.rname): str(add.rdata) for add in additionals if add.rtype == QTYPE.A}
+
+    for ns in nameServers:
+      if ns in additional_map and additional_map[ns] not in visited:
+        visited.add(additional_map[ns])
+        print(f"Name Server: {ns} at {additional_map[ns]}\n")
+        ip = query(sock, cache, targetDomain, [additional_map[ns]])
+        if ip:
+          return ip
+    print(f"Failure to resolve: \"{targetDomain}\"\nPlease check your network connection.")  
 
 # Runs query() based on user input
 def inputLoop(sock:socket, cache:Cache):
@@ -154,7 +155,7 @@ def inputLoop(sock:socket, cache:Cache):
     clearScreen()
     
     # Command handling
-    match targetDomain:
+    match targetDomain.lower():
       case ".exit":
         break
       case ".list":
@@ -205,15 +206,14 @@ def query(sock:socket, cache:Cache, targetDomain:str, parentServers:list[str] = 
     else:
       # There should be some kind of answer
       ans = parseAnswer(sock, cache, answers)
-      cache.add(targetDomain, ans)
-      return ans
-
+      if ans is not None:
+        cache.add(targetDomain, ans)
+        return ans
+    ip = parseNameServers(sock, cache, authorities, additionals, targetDomain)
+    if ip is not None:
+      return ip
     parseNameServers(sock, cache, authorities, additionals, targetDomain)
-
-  print(f"Failure to resolve: \"{targetDomain}\"\nPlease check your network connection.")  
-
-  print(LONGSPACE)
-  
+  print(WEAKLINE)
 
 def main():
   c = Cache()
