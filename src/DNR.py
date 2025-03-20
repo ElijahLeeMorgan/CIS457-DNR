@@ -140,12 +140,22 @@ def parseNameServers(sock:socket, cache:Cache, authorities: RR, additionals:RR, 
     additional_map = {str(add.rname): str(add.rdata) for add in additionals if add.rtype == QTYPE.A}
 
     for ns in nameServers:
+      # AI Assisted code below
       if ns in additional_map and additional_map[ns] not in visited:
         visited.add(additional_map[ns])
         print(f"Name Server: {ns} at {additional_map[ns]}\n")
         ip = query(sock, cache, targetDomain, [additional_map[ns]])
         if ip:
           return ip
+      elif ns not in additional_map:
+        # Resolve the name server recursively if its IP is not in the additional section
+        print(f"Resolving IP for Name Server: {ns}")
+        ns_ip = query(sock, cache, ns)
+        if ns_ip and ns_ip not in visited:
+          visited.add(ns_ip)
+          ip = query(sock, cache, targetDomain, [ns_ip])
+          if ip:
+            return ip
     print(f"Failure to resolve: \"{targetDomain}\"\nPlease check your network connection.")  
 
 # Runs query() based on user input
